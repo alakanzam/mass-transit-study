@@ -1,0 +1,7 @@
+/.vs
+/MassTransitDemo/obj
+/MassTransitDemo/bin
+/MessagePublisher/obj
+/MessagePublisher/bin
+/MTransit.Messages/obj
+/MTransit.Messages/bin
