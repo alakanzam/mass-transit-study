@@ -36,10 +36,10 @@ namespace MessagePublisher
 
             busControl.StartAsync().Wait();
 
-			var message = new CommonMessage();
-			message.Name = "Name 001";
-			message.Description = "Description 001";
-            busControl.Publish(message).Wait();
+			//var message = new CommonMessage();
+			//message.Name = "Name 001";
+			//message.Description = "Description 001";
+   //         busControl.Publish(message).Wait();
 
 			Console.WriteLine("MassTransit publisher has been started");
 			Console.ReadLine();

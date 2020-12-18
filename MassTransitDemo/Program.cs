@@ -1,76 +1,122 @@
 ﻿using System;
 using System.Linq;
-using System.Reflection;
-using System.Web;
+using DIS.MessageCoordinator.Services;
+using DIS.MessageCoordinator.Services.EventConsumers;
+using DIS.MessageCoordinator.Services.EventProcessors;
 using MassTransit;
-using MassTransit.RabbitMqTransport;
-using MassTransitDemo.Services;
 using Microsoft.Extensions.DependencyInjection;
+using MTransit.Messages.Extensions;
+using MTransit.Messages.Interfaces;
 using MTransit.Messages.Models;
+using MTransit.Messages.Models.Actions;
+using MTransit.Messages.Models.Events;
 
-namespace MassTransitDemo
+namespace DIS.MessageCoordinator
 {
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            var serviceProviderFactory = new DefaultServiceProviderFactory();
+	class Program
+	{
+		static void Main(string[] args)
+		{
+			var serviceProviderFactory = new DefaultServiceProviderFactory();
 
-            var services = new ServiceCollection();
-            var contexts =
-                typeof(CommonMessageConsumer)
-                    .Assembly
-                    .GetTypes()
-                    .Where(x => typeof(IConsumer).IsAssignableFrom(x) && !x.IsInterface)
-                    .ToArray();
+			var services = new ServiceCollection();
+			var availablePastEvents =
+				typeof(EbcDeclarationCreatedEvent)
+					.Assembly
+					.GetTypes()
+					.Where(x => typeof(IPastEvent).IsAssignableFrom(x) && !x.IsInterface)
+					.ToArray();
 
-            //foreach (var context in contexts)
-            //	services.AddSingleton(typeof(IConsumer<>), context);
-            services.AddSingleton<IConsumer<CommonMessage>, CommonMessageConsumer>();
+			var availableConsumerTypes = typeof(EbcDeclarationCreatedEventConsumer).Assembly
+				.GetTypes()
+				.Where(x => typeof(IConsumer).IsAssignableFrom(x) && !x.IsInterface)
+				.ToArray();
 
-            var serviceProvider = serviceProviderFactory.CreateServiceProvider(services);
+			services.AddEventProcessors<EbcDeclarationCreatedEvent>(
+				typeof(EbcDeclarationCreatedEventProcessor1).Assembly);
 
-            var commonMessageQueueName = "common-message";
+			services.AddActionProcessors<ValidateTariffRecordAction>(
+				typeof(ValidateTariffRecordAction).Assembly);
 
-            var busControl = Bus.Factory.CreateUsingRabbitMq(cfg =>
-            {
-                //var connectionString = $"amqp://admin:admin123@10.16.114.42:15672/";
+			foreach (var availablePastEvent in availablePastEvents)
+			{
+				var genericConsumerType = typeof(IConsumer<>).MakeGenericType(availablePastEvent);
+				//var genericProcessorType = typeof(IEventProcessor<>).MakeGenericType(availablePastEvent);
 
-                cfg.Host(new Uri("amqps://mustang.rmq.cloudamqp.com/vjqpxaxw"), configurator =>
-                {
-                    configurator.Username("vjqpxaxw");
-                    configurator.Password("n8WSzZNJEl3Oi2L8RvHUFK_n0nwTl2BN");
-                });
+				var availableConsumerType = availableConsumerTypes
+					.FirstOrDefault(x => genericConsumerType.IsAssignableFrom(x));
 
-                cfg.ReceiveEndpoint(commonMessageQueueName, e =>
-                {
-                    e.Durable = true;
-                    e.Exclusive = false;
-                    e.AutoDelete = true;
+				if (availableConsumerType != null)
+					services.AddSingleton(genericConsumerType, availableConsumerType);
 
-                    // // delegate consumer factory
-                    // e.Consumer(() => new SubmitOrderConsumer());
-                    //
-                    // // another delegate consumer factory, with dependency
-                    // e.Consumer(() => new LogOrderSubmittedConsumer(Console.Out));
+				//var processorTypes = availableProcessorTypes
+				//	.Where(x => genericProcessorType.IsAssignableFrom(x) && !x.IsInterface)
+				//	.ToArray();
 
-                    // a type-based factory that returns an object (specialized uses)
-                    var consumerType = typeof(IConsumer<CommonMessage>);
-                    e.Consumer(() => (IConsumer<CommonMessage>)serviceProvider.GetService(consumerType));
+				if (availableConsumerType != null)
+					services.AddSingleton(genericConsumerType, availableConsumerType);
 
-                });
-            });
+				//if (processorTypes.Any())
+				//{
+				//	foreach (var processorType in processorTypes)
+				//		services.AddSingleton(genericProcessorType, processorType);
+				//}
+			}
 
-            busControl.StartAsync().Wait();
-            Console.WriteLine("MassTransit has been started");
+			//foreach (var context in contexts)
+			//	services.AddSingleton(typeof(IConsumer<>), context);
+			//services.AddSingleton<IConsumer<CommonMessage>, EbcCreatedEventConsumer>();
+			var commonMessageQueueName = "event-message";
+			services.AddSingleton<IBusControl>(provider =>
+			{
+				return Bus.Factory.CreateUsingRabbitMq(cfg =>
+				{
+					//var connectionString = $"amqp://admin:admin123@10.16.114.42:15672/";
 
-            var message = new CommonMessage();
-            message.Name = "Name 001";
-            message.Description = "Description 001";
-            busControl.Publish(message).Wait();
-            Console.WriteLine("MassTransit has been sent");
+					//cfg.Host(new Uri("amqps://mustang.rmq.cloudamqp.com/vjqpxaxw"), configurator =>
+					//{
+					// configurator.Username("vjqpxaxw");
+					// configurator.Password("n8WSzZNJEl3Oi2L8RvHUFK_n0nwTl2BN");
+					//});
+					cfg.Host(new Uri("amqp://10.16.114.42:5672/"), configurator =>
+					{
+						configurator.Username("admin");
+						configurator.Password("admin@123");
+					});
 
-            Console.ReadLine();
-        }
-    }
+					cfg.ReceiveEndpoint(commonMessageQueueName, e =>
+					{
+						e.Durable = true;
+						e.Exclusive = false;
+						e.AutoDelete = true;
+
+						foreach (var availablePastEvent in availablePastEvents)
+						{
+							var genericConsumerType = typeof(IConsumer<>).MakeGenericType(availablePastEvent);
+							e.Consumer(genericConsumerType, type =>
+							{
+								var consumerServices = provider.GetServices(type);
+								var consumerService = consumerServices.FirstOrDefault();
+								return consumerService;
+							});
+						}
+					});
+				});
+			});
+
+			var serviceProvider = serviceProviderFactory.CreateServiceProvider(services);
+			Console.WriteLine("MassTransit is starting");
+
+			var busControl = serviceProvider.GetService<IBusControl>();
+			busControl.StartAsync().Wait();
+			Console.WriteLine("MassTransit has been started");
+
+			var declarationIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+			var ebcCreatedEvent = new EbcDeclarationCreatedEvent(Guid.NewGuid(), "Name-001", declarationIds);
+			busControl.Publish(ebcCreatedEvent).Wait();
+			Console.WriteLine("MassTransit has been sent");
+
+			Console.ReadLine();
+		}
+	}
 }
