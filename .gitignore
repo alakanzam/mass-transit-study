@@ -5,3 +5,11 @@
 /MessagePublisher/bin
 /MTransit.Messages/obj
 /MTransit.Messages/bin
+/DIS.App/obj
+/DIS.App/bin
+/DIS.MessageCoordinator/obj
+/DIS.MessageCoordinator/bin
+/DIS.MessageEvent/obj
+/DIS.MessageEvent/bin
+/DIS.MessageRecipient/obj
+/DIS.MessageRecipient/bin
