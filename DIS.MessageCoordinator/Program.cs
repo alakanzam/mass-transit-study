@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Linq;
+using DIS.MessageCoordinator.Observers;
 using DIS.MessageCoordinator.Services.EventConsumers;
 using DIS.MessageCoordinator.Services.EventProcessors;
 using DIS.MessageEvent.Extensions;
 using DIS.MessageEvent.Interfaces;
 using DIS.MessageEvent.Models.Events;
 using MassTransit;
+using MassTransit.Audit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,6 +45,9 @@ namespace DIS.MessageCoordinator
                 if (availableConsumerType != null)
                     services.AddSingleton(genericConsumerType, availableConsumerType);
             }
+
+            // Add event store.
+            services.AddSingleton<IMessageAuditStore, SqlConsumeAuditStore>();
 
             // Build the configuration
             var config = new ConfigurationBuilder()
@@ -99,6 +104,8 @@ namespace DIS.MessageCoordinator
             Console.WriteLine("[DIS.MessageCoordinator] starting");
 
             var busControl = serviceProvider.GetService<IBusControl>();
+            busControl.ConnectConsumeAuditObserver(serviceProvider.GetService<IMessageAuditStore>());
+
             busControl.StartAsync().Wait();
             Console.WriteLine("[DIS.MessageCoordinator] started");
 
