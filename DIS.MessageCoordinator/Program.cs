@@ -6,6 +6,7 @@ using DIS.MessageCoordinator.Services.EventProcessors;
 using DIS.MessageEvent.Extensions;
 using DIS.MessageEvent.Interfaces;
 using DIS.MessageEvent.Models.Events;
+using EventStore.ClientAPI;
 using MassTransit;
 using MassTransit.Audit;
 using Microsoft.Extensions.Configuration;
@@ -98,7 +99,19 @@ namespace DIS.MessageCoordinator
 				});
 			});
 
+			// Bus registration.
 			services.AddSingleton<IBus>(provider => provider.GetService<IBusControl>());
+			services.AddSingleton(provider =>
+			{
+				secretProvider.TryGet("EventStore:ConnectionString", out var eventStoreConnectionString);
+
+				var eventStoreConnection = EventStoreConnection.Create(eventStoreConnectionString,
+					ConnectionSettings.Create().KeepReconnecting(),
+					Environment.MachineName);
+
+				eventStoreConnection.ConnectAsync().Wait();
+				return eventStoreConnection;
+			});
 
 			var serviceProvider = serviceProviderFactory.CreateServiceProvider(services);
 			Console.WriteLine("[DIS.MessageCoordinator] starting");
